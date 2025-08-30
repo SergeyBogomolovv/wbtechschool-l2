@@ -64,6 +64,48 @@ func TestDecodeString(t *testing.T) {
 			in:   "ab12",
 			want: "abbbbbbbbbbbb",
 		},
+		{
+			name: "escaped digits are literals separately",
+			in:   "qwe\\4\\5",
+			want: "qwe45",
+		},
+		{
+			name: "escaped digit then count",
+			in:   "qwe\\45",
+			want: "qwe44444",
+		},
+
+		{
+			name: "escape digit in middle",
+			in:   "a\\2bc3",
+			want: "a2bccc",
+		},
+		{
+			name: "escaped backslash repeated",
+			in:   "x\\\\5",
+			want: "x\\\\\\\\\\",
+		},
+		{
+			name: "escaped zero is literal zero",
+			in:   "z\\0a1",
+			want: "z0a",
+		},
+		{
+			name: "escaped digit at start",
+			in:   "\\3a2",
+			want: "3aa",
+		},
+		{
+			name: "escaped letter then count",
+			in:   "x\\y2",
+			want: "xyy",
+		},
+		{
+			name:    "dangling escape",
+			in:      "abc\\",
+			want:    "",
+			wantErr: ErrInvalidString,
+		},
 	}
 
 	for _, tt := range tests {

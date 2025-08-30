@@ -33,6 +33,13 @@ func DecodeString(s string) (string, error) {
 			if isPrevLetter {
 				result.WriteRune(prev)
 			}
+			if ch == '\\' {
+				i++
+				if i == len(runes) {
+					return "", ErrInvalidString
+				}
+				ch = runes[i]
+			}
 			prev = ch
 			isPrevLetter = true
 			continue
@@ -52,7 +59,7 @@ func DecodeString(s string) (string, error) {
 		}
 		i = j - 1
 
-		for k := 0; k < num; k++ {
+		for range num {
 			result.WriteRune(prev)
 		}
 		isPrevLetter = false
