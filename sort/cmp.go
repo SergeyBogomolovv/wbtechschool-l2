@@ -1,16 +1,14 @@
 package main
 
 import (
-	"fmt"
 	"math"
-	"os"
 	"strconv"
 	"strings"
 	"unicode"
 )
 
-// Options - sort options.
-type Options struct {
+// SortOptions - sort options.
+type SortOptions struct {
 	Column               int
 	Numeric              bool
 	Month                bool
@@ -37,13 +35,13 @@ var (
 )
 
 // конструктор функции сравнения
-func cmpFunc(opts Options) func(a, b string) int {
+func cmpFunc(opts SortOptions) func(a, b string) int {
 	key := func(s string) string {
 		if opts.IgnoreTrailingBlanks {
 			s = strings.TrimRight(s, " \t")
 		}
 		if opts.Column > 0 {
-			fields := strings.Fields(s)
+			fields := strings.Split(s, "\t")
 			if opts.Column-1 < len(fields) {
 				return fields[opts.Column-1]
 			}
@@ -54,35 +52,37 @@ func cmpFunc(opts Options) func(a, b string) int {
 
 	return func(a, b string) int {
 		a, b = key(a), key(b)
+
 		var cmp int
 
 		switch {
 
 		case opts.Month:
-			if len(a) < 3 {
-				fmt.Fprintf(os.Stderr, "invalid month value: %s\n", a)
-				os.Exit(1)
+			if len(a) >= 3 && len(b) >= 3 {
+				mA, okA := months[strings.ToLower(a[:3])]
+				mB, okB := months[strings.ToLower(b[:3])]
+				switch {
+				case okA && okB:
+					cmp = mA - mB
+				case okA:
+					cmp = -1
+				case okB:
+					cmp = 1
+				default:
+					cmp = strings.Compare(a, b)
+				}
 			}
-			if len(b) < 3 {
-				fmt.Fprintf(os.Stderr, "invalid month value: %s\n", b)
-				os.Exit(1)
-			}
-			monthA, monthB := months[strings.ToLower(a[:3])], months[strings.ToLower(b[:3])]
-			cmp = monthA - monthB
 
 		case opts.Numeric:
-			fa, err := strconv.ParseFloat(a, 64)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "invalid numeric value: %s\n", a)
-				os.Exit(1)
-			}
-			fb, err := strconv.ParseFloat(b, 64)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "invalid numeric value: %s\n", b)
-				os.Exit(1)
-			}
-
+			fa, errA := strconv.ParseFloat(a, 64)
+			fb, errB := strconv.ParseFloat(b, 64)
 			switch {
+			case errA != nil && errB != nil:
+				cmp = strings.Compare(a, b)
+			case errA != nil:
+				cmp = 1
+			case errB != nil:
+				cmp = -1
 			case fa < fb:
 				cmp = -1
 			case fa > fb:
@@ -125,8 +125,7 @@ func parseHumanSize(s string) float64 {
 
 	val, err := strconv.ParseFloat(numPart, 64)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid value: %s\n", s)
-		os.Exit(1)
+		return 0
 	}
 
 	mult := map[string]float64{
@@ -140,7 +139,7 @@ func parseHumanSize(s string) float64 {
 		"E": math.Pow(1024, 6),
 	}
 
-	m := mult[suffix]
+	m := mult[strings.ToUpper(suffix)]
 	if m == 0 {
 		m = 1
 	}

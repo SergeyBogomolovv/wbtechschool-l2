@@ -9,58 +9,75 @@ import (
 	"unicode"
 )
 
+type Options struct {
+	Sort SortOptions
+
+	Unique bool
+	Check  bool
+
+	FilePath string
+}
+
 func main() {
-	var check, unique bool
-	var opts Options
-
-	flag.BoolVar(&unique, "u", false, "output only unique values.")
-	flag.BoolVar(&check, "c", false, "check whether input is sorted; do not sort.")
-	flag.IntVar(&opts.Column, "k", 0, "sort by field N (1-based). Fields are TAB-separated by default.")
-	flag.BoolVar(&opts.Numeric, "n", false, "compare according to numeric value.")
-	flag.BoolVar(&opts.Reverse, "r", false, "reverse the result of comparisons.")
-	flag.BoolVar(&opts.Month, "M", false, "compare by month name (Jan…Dec).")
-	flag.BoolVar(&opts.IgnoreTrailingBlanks, "b", false, "ignore trailing blanks when comparing.")
-	flag.BoolVar(&opts.HumanNumeric, "h", false, "compare human-readable numbers (e.g., 2K, 3M).")
-
-	os.Args = unwrapFlags(os.Args)
-	flag.Parse()
+	opts := parseOpts(expandArgs(os.Args[1:]))
 
 	var in io.Reader = os.Stdin
 	var out io.Writer = os.Stdout
 
-	if flag.NArg() > 0 {
-		f, err := os.Open(flag.Arg(0))
+	if opts.FilePath != "" {
+		f, err := os.Open(opts.FilePath)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "No such file or directory")
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		defer f.Close()
 		in = f
 	}
 
-	if check {
-		ok, unsorted := checkSorted(in, cmpFunc(opts))
+	if opts.Check {
+		ok, unsorted := checkSorted(in, cmpFunc(opts.Sort))
 		if !ok {
-			fmt.Fprintf(os.Stderr, "unordered: %s\n", unsorted)
+			fmt.Fprintf(os.Stderr, "sort: disorder: %s\n", unsorted)
 			os.Exit(1)
 		}
 		os.Exit(0)
 	}
 
-	if unique {
+	if opts.Unique {
 		uw := newUniqueWriter(out)
 		defer uw.Flush()
 		out = uw
 	}
 
-	if err := ExternalSort(in, out, cmpFunc(opts)); err != nil {
+	if err := ExternalSort(in, out, cmpFunc(opts.Sort)); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-// функция для обработки флагов -ur => -u -r
-func unwrapFlags(args []string) []string {
+func parseOpts(args []string) Options {
+	fs := flag.NewFlagSet("sort", flag.ContinueOnError)
+
+	var opts Options
+	fs.BoolVar(&opts.Unique, "u", false, "output only unique values.")
+	fs.BoolVar(&opts.Check, "c", false, "check whether input is sorted; do not sort.")
+	fs.IntVar(&opts.Sort.Column, "k", 0, "sort by field N (1-based). Fields are TAB-separated by default.")
+	fs.BoolVar(&opts.Sort.Numeric, "n", false, "compare according to numeric value.")
+	fs.BoolVar(&opts.Sort.Reverse, "r", false, "reverse the result of comparisons.")
+	fs.BoolVar(&opts.Sort.Month, "M", false, "compare by month name (Jan…Dec).")
+	fs.BoolVar(&opts.Sort.IgnoreTrailingBlanks, "b", false, "ignore trailing blanks when comparing.")
+	fs.BoolVar(&opts.Sort.HumanNumeric, "h", false, "compare human-readable numbers (e.g., 2K, 3M).")
+
+	fs.Parse(args)
+
+	if fs.NArg() > 0 {
+		opts.FilePath = fs.Arg(0)
+	}
+
+	return opts
+}
+
+func expandArgs(args []string) []string {
 	var expanded []string
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "-") &&
