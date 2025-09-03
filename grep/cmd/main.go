@@ -4,36 +4,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"grep"
 	"io"
 	"os"
 )
-
-// Options - опции для команды grep
-type Options struct {
-	// количество строк после
-	After int
-	// количество строк до
-	Before int
-	// количество строк до и после
-	Context int
-
-	// вывести только количество найденных строк
-	CountLines bool
-	// игнорировать регистр
-	IgnoreCase bool
-	// инвертировать условие
-	Invert bool
-	// выводить номер строки
-	ShowLine bool
-	// воспринимать шаблон как фиксированную строку, а не регулярное выражение
-	Fixed bool
-
-	// путь к файлу (по умолчанию stdin)
-	File string
-
-	// шаблон поиска
-	Pattern string
-}
 
 func main() {
 	opts, err := parseOptions(os.Args[1:])
@@ -53,14 +27,14 @@ func main() {
 		in = f
 	}
 
-	if err := Grep(in, os.Stdout, opts); err != nil {
+	if err := grep.Grep(in, os.Stdout, opts); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func parseOptions(args []string) (Options, error) {
-	var opts Options
+func parseOptions(args []string) (grep.Options, error) {
+	var opts grep.Options
 
 	fs := flag.NewFlagSet("grep", flag.ContinueOnError)
 

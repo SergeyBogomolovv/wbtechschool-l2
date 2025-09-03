@@ -1,4 +1,4 @@
-package main
+package grep
 
 import (
 	"bufio"
@@ -7,6 +7,33 @@ import (
 	"regexp"
 	"strings"
 )
+
+// Options - опции для команды grep
+type Options struct {
+	// количество строк после
+	After int
+	// количество строк до
+	Before int
+	// количество строк до и после
+	Context int
+
+	// вывести только количество найденных строк
+	CountLines bool
+	// игнорировать регистр
+	IgnoreCase bool
+	// инвертировать условие
+	Invert bool
+	// выводить номер строки
+	ShowLine bool
+	// воспринимать шаблон как фиксированную строку, а не регулярное выражение
+	Fixed bool
+
+	// путь к файлу (по умолчанию stdin)
+	File string
+
+	// шаблон поиска
+	Pattern string
+}
 
 // Grep - поиск строк в файле
 func Grep(in io.Reader, out io.Writer, opts Options) error {
