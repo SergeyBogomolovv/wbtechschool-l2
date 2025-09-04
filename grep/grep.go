@@ -91,12 +91,12 @@ func Grep(in io.Reader, out io.Writer, opts Options) error {
 
 	before := max(opts.Before, opts.Context)
 	after := max(opts.After, opts.Context)
-	pr := newContextPrinter(writer, before, after, opts.ShowLine)
+	pr := NewContextPrinter(writer, before, after, opts.ShowLine)
 
 	// выводим вхождения с контекстом
 	for i := 1; scanner.Scan(); i++ {
 		line := scanner.Text()
-		pr.handle(i, line, match(line))
+		pr.Handle(i, line, match(line))
 	}
 
 	return scanner.Err()

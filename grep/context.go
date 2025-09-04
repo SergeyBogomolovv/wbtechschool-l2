@@ -5,49 +5,52 @@ import (
 	"io"
 )
 
-type priorLine struct {
+type line struct {
 	num  int
 	text string
 }
 
-type contextPrinter struct {
+// ContextPrinter - отвечает за вывод контекста без повторений
+type ContextPrinter struct {
 	w           io.Writer
 	showLine    bool
 	before      int
 	after       int
-	ring        []priorLine
-	rpos        int
-	rfilled     int
+	ring        []line
+	pos         int
+	filled      int
 	postCount   int
 	lastPrinted int
 }
 
-func newContextPrinter(w io.Writer, before, after int, showLine bool) *contextPrinter {
-	cp := &contextPrinter{w: w, showLine: showLine, before: before, after: after}
+// NewContextPrinter - создает новый ContextPrinter
+func NewContextPrinter(w io.Writer, before, after int, showLine bool) *ContextPrinter {
+	cp := &ContextPrinter{w: w, showLine: showLine, before: before, after: after}
 	if before > 0 {
-		cp.ring = make([]priorLine, before)
+		cp.ring = make([]line, before)
 	}
 	return cp
 }
 
-func (cp *contextPrinter) handle(lineNum int, line string, isMatch bool) {
+// Handle - выводит строку и контекст, без повторений
+func (cp *ContextPrinter) Handle(num int, s string, isMatch bool) {
 	if isMatch {
-		if cp.postCount == 0 && cp.before > 0 && cp.rfilled > 0 {
-			for i := cp.rfilled; i > 0; i-- {
-				idx := (cp.rpos - i + cp.before) % cp.before
+		if cp.postCount == 0 && cp.before > 0 && cp.filled > 0 {
+			for i := cp.filled; i > 0; i-- {
+				idx := (cp.pos - i + cp.before) % cp.before
 				cp.printLine(cp.ring[idx].num, cp.ring[idx].text)
 			}
 		}
-		cp.printLine(lineNum, line)
+		cp.printLine(num, s)
 		cp.postCount = cp.after
 	} else if cp.postCount > 0 {
-		cp.printLine(lineNum, line)
+		cp.printLine(num, s)
 		cp.postCount--
 	}
-	cp.push(lineNum, line)
+	cp.push(num, s)
 }
 
-func (cp *contextPrinter) printLine(n int, s string) {
+func (cp *ContextPrinter) printLine(n int, s string) {
 	if n == cp.lastPrinted {
 		return
 	}
@@ -59,13 +62,13 @@ func (cp *contextPrinter) printLine(n int, s string) {
 	}
 }
 
-func (cp *contextPrinter) push(n int, s string) {
+func (cp *ContextPrinter) push(n int, s string) {
 	if cp.before == 0 {
 		return
 	}
-	cp.ring[cp.rpos] = priorLine{num: n, text: s}
-	cp.rpos = (cp.rpos + 1) % cp.before
-	if cp.rfilled < cp.before {
-		cp.rfilled++
+	cp.ring[cp.pos] = line{num: n, text: s}
+	cp.pos = (cp.pos + 1) % cp.before
+	if cp.filled < cp.before {
+		cp.filled++
 	}
 }
