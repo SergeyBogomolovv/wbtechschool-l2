@@ -1,4 +1,4 @@
-package main
+package sort
 
 import (
 	"math"
@@ -6,16 +6,6 @@ import (
 	"strings"
 	"unicode"
 )
-
-// SortOptions - sort options.
-type SortOptions struct {
-	Column               int
-	Numeric              bool
-	Month                bool
-	Reverse              bool
-	IgnoreTrailingBlanks bool
-	HumanNumeric         bool
-}
 
 var (
 	months = map[string]int{
@@ -32,14 +22,22 @@ var (
 		"nov": 11,
 		"dec": 12,
 	}
+
+	mult = map[string]float64{
+		"":  1,
+		"B": 1,
+		"K": math.Pow(1024, 1),
+		"M": math.Pow(1024, 2),
+		"G": math.Pow(1024, 3),
+		"T": math.Pow(1024, 4),
+		"P": math.Pow(1024, 5),
+		"E": math.Pow(1024, 6),
+	}
 )
 
 // конструктор функции сравнения
-func cmpFunc(opts SortOptions) func(a, b string) int {
+func newCmpFunc(opts Options) func(a, b string) int {
 	key := func(s string) string {
-		if opts.IgnoreTrailingBlanks {
-			s = strings.TrimRight(s, " \t")
-		}
 		if opts.Column > 0 {
 			fields := strings.Split(s, "\t")
 			if opts.Column-1 < len(fields) {
@@ -126,17 +124,6 @@ func parseHumanSize(s string) float64 {
 	val, err := strconv.ParseFloat(numPart, 64)
 	if err != nil {
 		return 0
-	}
-
-	mult := map[string]float64{
-		"":  1,
-		"B": 1,
-		"K": math.Pow(1024, 1),
-		"M": math.Pow(1024, 2),
-		"G": math.Pow(1024, 3),
-		"T": math.Pow(1024, 4),
-		"P": math.Pow(1024, 5),
-		"E": math.Pow(1024, 6),
 	}
 
 	m := mult[strings.ToUpper(suffix)]

@@ -1,9 +1,8 @@
-package main
+package sort
 
 import (
 	"bufio"
 	"container/heap"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,32 +10,56 @@ import (
 	"strings"
 )
 
-// ExternalSort - Сортировка больших обьемов строк
-func ExternalSort(in io.Reader, out io.Writer, cmp func(a, b string) int) error {
+// Options - опции для команды sort
+type Options struct {
+	Column               int
+	Numeric              bool
+	Month                bool
+	Reverse              bool
+	IgnoreTrailingBlanks bool
+	HumanNumeric         bool
+
+	Unique bool
+	Check  bool
+}
+
+// Sort - Сортировка больших обьемов строк.
+func Sort(in io.Reader, out io.Writer, opts Options) error {
+	cmp := newCmpFunc(opts)
+	if opts.Check {
+		ok, unsorted := checkSorted(in, opts.IgnoreTrailingBlanks, cmp)
+		if !ok {
+			return fmt.Errorf("sort: disorder: %s", unsorted)
+		}
+		return nil
+	}
+
 	tmpDir, err := os.MkdirTemp(os.TempDir(), "extsort-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	files, err := splitChunks(in, tmpDir, cmp)
+	files, err := splitChunks(in, tmpDir, opts.IgnoreTrailingBlanks, cmp)
 	if err != nil {
 		return err
 	}
 
-	return merge(files, out, cmp)
+	if opts.Unique {
+		writer := newUniqueWriter(out)
+		defer writer.Flush()
+		out = writer
+	}
+
+	return sortFiles(files, out, cmp)
 }
 
 // разбивает входные данные на чанки, сортирует их и сохраняет во временные файлы
-func splitChunks(in io.Reader, dir string, cmp func(a, b string) int) ([]string, error) {
-	const (
-		chunkSize  = 256 << 20 // 256MB
-		bufferSize = 1 << 20   // 1MB
-	)
+func splitChunks(in io.Reader, tmpDir string, trimTrailingBlanks bool, cmp func(a, b string) int) ([]string, error) {
+	const maxLines = 100000
 
 	lines := make([]string, 0)
 	files := make([]string, 0)
-	accumBytes := 0
 
 	flush := func() error {
 		if len(lines) == 0 {
@@ -44,52 +67,35 @@ func splitChunks(in io.Reader, dir string, cmp func(a, b string) int) ([]string,
 		}
 		slices.SortFunc(lines, cmp)
 
-		file, err := os.CreateTemp(dir, "chunk-*.txt")
+		file, err := os.CreateTemp(tmpDir, "chunk-*.txt")
 		if err != nil {
 			return fmt.Errorf("failed to create temp file: %w", err)
 		}
 		defer file.Close()
 
-		writer := bufio.NewWriterSize(file, bufferSize)
+		writer := bufio.NewWriter(file)
 		defer writer.Flush()
 
 		for _, s := range lines {
-			_, err := writer.WriteString(s)
-			if err != nil {
-				return fmt.Errorf("failed to write to temp file: %w", err)
-			}
-			err = writer.WriteByte('\n')
-			if err != nil {
-				return fmt.Errorf("failed to write to temp file: %w", err)
-			}
+			fmt.Fprintln(writer, s)
 		}
 
 		files = append(files, file.Name())
 		lines = lines[:0]
-		accumBytes = 0
 		return nil
 	}
 
-	reader := bufio.NewReaderSize(in, bufferSize)
-	for {
-		b, err := reader.ReadBytes('\n')
-		if len(b) > 0 {
-			if accumBytes+len(b) > chunkSize && len(lines) > 0 {
-				if err := flush(); err != nil {
-					return files, err
-				}
+	scanner := bufio.NewScanner(in)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if trimTrailingBlanks {
+			line = strings.TrimRight(line, " \t\r")
+		}
+		lines = append(lines, line)
+		if len(lines) >= maxLines {
+			if err := flush(); err != nil {
+				return files, err
 			}
-			accumBytes += len(b)
-			s := strings.TrimRight(string(b), "\r\n")
-			lines = append(lines, s)
-		}
-
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return files, err
 		}
 	}
 
@@ -97,61 +103,48 @@ func splitChunks(in io.Reader, dir string, cmp func(a, b string) int) ([]string,
 		return files, err
 	}
 
-	return files, nil
+	return files, scanner.Err()
 }
 
 // сортирует данные из отсротиванных чанков
-func merge(paths []string, out io.Writer, cmp func(a, b string) int) error {
-	const bufferSize = 1 << 20 // 1MB
-
-	if len(paths) == 0 {
+func sortFiles(files []string, out io.Writer, cmp func(a, b string) int) error {
+	if len(files) == 0 {
 		return nil
 	}
 
 	// открытие всех чанков
-	readers := make([]*bufio.Reader, 0, len(paths))
-	for _, p := range paths {
+	scanners := make([]*bufio.Scanner, 0, len(files))
+	for _, p := range files {
 		file, err := os.Open(p)
 		if err != nil {
 			return fmt.Errorf("failed to open file: %w", err)
 		}
 		defer file.Close()
-		readers = append(readers, bufio.NewReaderSize(file, bufferSize))
+		scanners = append(scanners, bufio.NewScanner(file))
 	}
 
-	writer := bufio.NewWriterSize(out, bufferSize)
+	writer := bufio.NewWriter(out)
 	defer writer.Flush()
 
 	// инициализация кучи
 	h := &mergeHeap{cmp: cmp}
-	for i, reader := range readers {
-		line, err := readLine(reader)
-		if errors.Is(err, io.EOF) {
+	for id, scanner := range scanners {
+		if !scanner.Scan() {
 			continue
 		}
-		if err != nil {
-			return fmt.Errorf("failed to read line: %w", err)
-		}
-		h.items = append(h.items, mergeItem{line: line, fileID: i})
+		line := scanner.Text()
+		h.items = append(h.items, mergeItem{line: line, fileID: id})
 	}
 	heap.Init(h)
 
 	// сортировка
 	for h.Len() > 0 {
 		el := heap.Pop(h).(mergeItem)
-		if _, err := writer.WriteString(el.line); err != nil {
-			return fmt.Errorf("failed to write: %w", err)
-		}
-		if err := writer.WriteByte('\n'); err != nil {
-			return fmt.Errorf("failed to write: %w", err)
-		}
-		next, err := readLine(readers[el.fileID])
-		if errors.Is(err, io.EOF) {
+		fmt.Fprintln(out, el.line)
+		if !scanners[el.fileID].Scan() {
 			continue
 		}
-		if err != nil {
-			return fmt.Errorf("failed to read line: %w", err)
-		}
+		next := scanners[el.fileID].Text()
 		heap.Push(h, mergeItem{line: next, fileID: el.fileID})
 	}
 
@@ -181,13 +174,21 @@ func (h *mergeHeap) Pop() any {
 	return it
 }
 
-func readLine(r *bufio.Reader) (string, error) {
-	s, err := r.ReadString('\n')
-	if errors.Is(err, io.EOF) && len(s) > 0 {
-		return strings.TrimRight(s, "\r\n"), nil
+// проверка, что входные данные отсортированы
+func checkSorted(in io.Reader, ignoreTrailingBlanks bool, cmp func(a, b string) int) (bool, string) {
+	scanner := bufio.NewScanner(in)
+	scanner.Scan()
+	prev := scanner.Text()
+	for scanner.Scan() {
+		line := scanner.Text()
+		if ignoreTrailingBlanks {
+			line = strings.TrimRight(line, " \t\r")
+		}
+		if cmp(prev, line) > 0 {
+			return false, prev
+		}
+		prev = scanner.Text()
 	}
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimRight(s, "\r\n"), nil
+
+	return true, ""
 }
