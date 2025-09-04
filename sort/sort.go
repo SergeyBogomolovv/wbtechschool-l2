@@ -26,6 +26,8 @@ type Options struct {
 // Sort - Сортировка больших обьемов строк.
 func Sort(in io.Reader, out io.Writer, opts Options) error {
 	cmp := newCmpFunc(opts)
+
+	// проверка, что входные данные отсортированы
 	if opts.Check {
 		ok, unsorted := checkSorted(in, opts.IgnoreTrailingBlanks, cmp)
 		if !ok {
@@ -34,12 +36,14 @@ func Sort(in io.Reader, out io.Writer, opts Options) error {
 		return nil
 	}
 
+	// создаем временную папку
 	tmpDir, err := os.MkdirTemp(os.TempDir(), "extsort-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
+	// сплитуем входные данные на чанки
 	files, err := splitChunks(in, tmpDir, opts.IgnoreTrailingBlanks, cmp)
 	if err != nil {
 		return err
@@ -51,6 +55,7 @@ func Sort(in io.Reader, out io.Writer, opts Options) error {
 		out = writer
 	}
 
+	// мержим файлы в out
 	return sortFiles(files, out, cmp)
 }
 
@@ -61,6 +66,7 @@ func splitChunks(in io.Reader, tmpDir string, trimTrailingBlanks bool, cmp func(
 	lines := make([]string, 0)
 	files := make([]string, 0)
 
+	// функция, для сохранения текущих строк во временный файл
 	flush := func() error {
 		if len(lines) == 0 {
 			return nil
@@ -88,6 +94,7 @@ func splitChunks(in io.Reader, tmpDir string, trimTrailingBlanks bool, cmp func(
 	scanner := bufio.NewScanner(in)
 	for scanner.Scan() {
 		line := scanner.Text()
+		// сразу убираем пробелы
 		if trimTrailingBlanks {
 			line = strings.TrimRight(line, " \t\r")
 		}
@@ -99,6 +106,7 @@ func splitChunks(in io.Reader, tmpDir string, trimTrailingBlanks bool, cmp func(
 		}
 	}
 
+	// сохраняем последний чанк
 	if err := flush(); err != nil {
 		return files, err
 	}
