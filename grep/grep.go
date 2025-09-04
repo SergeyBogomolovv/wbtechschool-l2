@@ -41,20 +41,20 @@ func Grep(in io.Reader, out io.Writer, opts Options) error {
 	writer := bufio.NewWriter(out)
 	defer writer.Flush()
 
-	// инициализирует регулярку и паттерн
+	// инициализируем регулярку и паттерн
 	var re *regexp.Regexp
+	pattern := opts.Pattern
 	if !opts.Fixed {
-		pattern := opts.Pattern
 		if opts.IgnoreCase {
 			pattern = "(?i)" + pattern
 		}
 		var err error
 		re, err = regexp.Compile(pattern)
 		if err != nil {
-			return fmt.Errorf("failed to compile regexp: %w", err)
+			return err
 		}
 	} else if opts.IgnoreCase {
-		opts.Pattern = strings.ToLower(opts.Pattern)
+		pattern = strings.ToLower(pattern)
 	}
 
 	// функция для проверки подходит ли строка
@@ -65,7 +65,7 @@ func Grep(in io.Reader, out io.Writer, opts Options) error {
 			if opts.IgnoreCase {
 				line = strings.ToLower(line)
 			}
-			ok = strings.Contains(line, opts.Pattern)
+			ok = strings.Contains(line, pattern)
 		} else {
 			ok = re.MatchString(line)
 		}
