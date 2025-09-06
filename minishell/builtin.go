@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 // IsBuiltin проверяет, является ли команда встроенной
@@ -68,7 +67,12 @@ func RunBuiltin(cmd Command, stdin io.Reader, stdout, stderr io.Writer) {
 			fmt.Fprintln(stderr, "kill: bad pid")
 			return
 		}
-		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			fmt.Fprintln(stderr, "kill:", err)
+			return
+		}
+		if err := proc.Signal(os.Interrupt); err != nil {
 			fmt.Fprintln(stderr, "kill:", err)
 		}
 

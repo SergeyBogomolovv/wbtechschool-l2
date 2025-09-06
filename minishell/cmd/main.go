@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"strings"
 	"sync/atomic"
-	"syscall"
 )
 
 func main() {
@@ -18,7 +17,7 @@ func main() {
 
 	var running atomic.Bool
 	sigch := make(chan os.Signal, 1)
-	signal.Notify(sigch, syscall.SIGINT)
+	signal.Notify(sigch, os.Interrupt)
 	defer signal.Stop(sigch)
 
 	// Перехватываем Ctrl+C и ничего не делаем если не запущен пайплайн
@@ -58,7 +57,7 @@ func main() {
 		}
 
 		running.Store(true)
-		minishell.RunPipeline(pipeline)
+		minishell.RunPipeline(pipeline, os.Stdin, os.Stdout, os.Stderr)
 		running.Store(false)
 	}
 }

@@ -43,28 +43,28 @@ func ExtractPipeline(line string) []Command {
 }
 
 // RunPipeline выполняет пайплайн команд
-func RunPipeline(pipeline []Command) {
+func RunPipeline(pipeline []Command, stdin io.Reader, stdout, stderr io.Writer) {
 	if len(pipeline) == 0 {
 		return
 	}
 
 	// Одиночный builtin выполняем в родительском процессе
 	if len(pipeline) == 1 && IsBuiltin(pipeline[0].Args[0]) {
-		RunBuiltin(pipeline[0], os.Stdin, os.Stdout, os.Stderr)
+		RunBuiltin(pipeline[0], stdin, stdout, stderr)
 		return
 	}
 
 	// Запретим cd в конвейере, чтобы не мутировать состояние shell в середине пайплайна
 	for _, cmd := range pipeline {
-		if IsBuiltin(cmd.Args[0]) && cmd.Args[0] == "cd" {
-			fmt.Fprintln(os.Stderr, "cd in pipeline is not supported")
+		if cmd.Args[0] == "cd" {
+			fmt.Fprintln(stderr, "cd in pipeline is not supported")
 			return
 		}
 	}
 
 	// Канал для перехвата SIGINT во время выполнения пайплайна
 	sigch := make(chan os.Signal, 1)
-	signal.Notify(sigch, syscall.SIGINT)
+	signal.Notify(sigch, os.Interrupt)
 	defer signal.Stop(sigch)
 
 	var (
@@ -89,7 +89,7 @@ func RunPipeline(pipeline []Command) {
 					// На всякий случай продублируем в каждый известный процесс
 					for _, cmd := range externals {
 						if cmd != nil && cmd.Process != nil {
-							cmd.Process.Signal(syscall.SIGINT)
+							cmd.Process.Signal(os.Interrupt)
 						}
 					}
 				}
@@ -111,7 +111,7 @@ func RunPipeline(pipeline []Command) {
 		if i < len(pipeline)-1 {
 			rp, wp, err := os.Pipe()
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
+				fmt.Fprintln(stderr, err)
 				return
 			}
 			outW = wp
@@ -120,8 +120,8 @@ func RunPipeline(pipeline []Command) {
 			prevRead = nil
 		}
 
-		var in io.Reader = os.Stdin
-		var out io.Writer = os.Stdout
+		var in io.Reader = stdin
+		var out io.Writer = stdout
 		if inR != nil {
 			in = inR
 		}
@@ -132,7 +132,7 @@ func RunPipeline(pipeline []Command) {
 		if IsBuiltin(cmd.Args[0]) {
 			// builtin внутри пайплайна исполним в горутине
 			wgBuiltins.Go(func() {
-				RunBuiltin(cmd, in, out, os.Stderr)
+				RunBuiltin(cmd, in, out, stderr)
 				// Закрыть концы трубы, чтобы downstream получил EOF
 				if inR != nil {
 					inR.Close()
@@ -148,7 +148,7 @@ func RunPipeline(pipeline []Command) {
 		ecmd := exec.Command(cmd.Args[0], cmd.Args[1:]...)
 		ecmd.Stdin = in
 		ecmd.Stdout = out
-		ecmd.Stderr = os.Stderr
+		ecmd.Stderr = stderr
 
 		// Объединяем все процессы пайплайна в одну группу
 		if leaderPID == 0 {
@@ -158,7 +158,7 @@ func RunPipeline(pipeline []Command) {
 		}
 
 		if err := ecmd.Start(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(stderr, err)
 			// Закроем неиспользуемые дескрипторы
 			if inR != nil {
 				inR.Close()
@@ -186,7 +186,9 @@ func RunPipeline(pipeline []Command) {
 
 	// Дождаться внешних процессов
 	for _, cmd := range externals {
-		cmd.Wait()
+		if err := cmd.Wait(); err != nil {
+			fmt.Fprintln(stderr, err)
+		}
 	}
 
 	// Дождаться builtin-ов
