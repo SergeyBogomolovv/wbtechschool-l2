@@ -14,7 +14,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: crawler <url> [depth]")
+		fmt.Println("Usage: wget <url> [depth]")
 		os.Exit(1)
 	}
 
@@ -35,7 +35,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Инициализация компонентов
 	downloader := downloader.New(10 * time.Second)
 	storage := storage.New("wget-output")
 

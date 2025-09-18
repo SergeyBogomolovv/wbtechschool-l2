@@ -116,7 +116,10 @@ func (c *Crawler) process(t Task) {
 			}
 		}
 		// Переписываем ссылки под локальные пути
-		body, _ = parser.RewriteLinks(t.URL, body, c.storage.LocalPath)
+		body, err = parser.RewriteLinks(t.URL, body, c.storage.LocalPath)
+		if err != nil {
+			fmt.Println("RewriteLinks error:", err)
+		}
 	}
 
 	_, err = c.storage.Save(t.URL, body)
